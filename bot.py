@@ -26,21 +26,6 @@ def send_telegram_message(message):
     except Exception as e:
         print("❌ Telegram error:", e)
 
-# === Get LTP, VWAP, Volume ===
-def fetch_equity_quote(symbol):
-    try:
-        url = f"https://api.upstox.com/v2/market-quote/quote?symbol=NSE_EQ|{symbol}"
-        r = requests.get(url, headers=HEADERS)
-        data = r.json()["data"][f"NSE_EQ|{symbol}"]
-        return {
-            "ltp": data["last_price"],
-            "vwap": data["vwap"],
-            "volume": data["volume"]
-        }
-    except Exception as e:
-        print(f"❌ Quote fetch error for {symbol}: {e}")
-        return None
-
 # === Get OI for CE Option (Next weekly expiry, ATM) ===
 def fetch_option_oi(symbol):
     try:
@@ -56,6 +41,24 @@ def fetch_option_oi(symbol):
     except Exception as e:
         print(f"❌ OI fetch error for {symbol}: {e}")
         return 0
+        
+def fetch_equity_quote(symbol):
+    try:
+        url = f"https://api.upstox.com/v2/market-quote/quote?symbol=NSE_EQ%7C{symbol}"
+        r = requests.get(url, headers=HEADERS)
+        print(f"[{symbol}] → RAW RESPONSE:", r.text)
+        data = r.json()
+        if "data" not in data:
+            return None
+        stock_data = data["data"][f"NSE_EQ|{symbol}"]
+        return {
+            "ltp": stock_data["last_price"],
+            "vwap": stock_data["vwap"],
+            "volume": stock_data["volume"]
+        }
+    except Exception as e:
+        print(f"❌ Quote fetch error for {symbol}:", e)
+        return None
 
 # === Scanner Logic ===
 def scan_and_alert():
