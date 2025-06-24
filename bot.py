@@ -60,7 +60,14 @@ def fetch_equity_quote(symbol):
 
 # === Scanner Logic ===
 def scan_and_alert():
-    symbols = ["TATAMOTORS", "SBIN", "ICICIBANK", "RELIANCE", "HDFCBANK", "INFY"]  # You can add full NSE list here
+symbols = {
+    "TATAMOTORS": "INE155A01022",
+    "SBIN": "INE062A01020",
+    "ICICIBANK": "INE090A01021",
+    "RELIANCE": "INE002A01018",
+    "HDFCBANK": "INE040A01034",
+    "INFY": "INE009A01021"
+}
 
     for symbol in symbols:
         eq = fetch_equity_quote(symbol)
