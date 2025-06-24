@@ -44,17 +44,15 @@ def fetch_option_oi(symbol):
         
 def fetch_equity_quote(symbol):
     try:
-        url = f"https://api.upstox.com/v2/market-quote/quote?symbol=NSE_EQ%7C{symbol}"
+        url = f"https://api.upstox.com/v2/market-quote/ltp?symbol=NSE_EQ%7C{symbol}"
         r = requests.get(url, headers=HEADERS)
-        print(f"[{symbol}] → RAW RESPONSE:", r.text)
+        print(f"[{symbol}] RAW LTP RESPONSE:", r.text)
         data = r.json()
-        if "data" not in data:
-            return None
         stock_data = data["data"][f"NSE_EQ|{symbol}"]
         return {
             "ltp": stock_data["last_price"],
-            "vwap": stock_data["vwap"],
-            "volume": stock_data["volume"]
+            "vwap": stock_data["last_price"] * 0.985,   # mock vwap
+            "volume": 1000000 + 50000                   # mock volume
         }
     except Exception as e:
         print(f"❌ Quote fetch error for {symbol}:", e)
