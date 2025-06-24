@@ -26,65 +26,59 @@ def send_telegram_message(message):
     except Exception as e:
         print("❌ Telegram error:", e)
 
-# === Get OI for CE Option (Next weekly expiry, ATM) ===
-def fetch_option_oi(symbol):
+# === Get LTP (and mock VWAP/volume) ===
+def fetch_equity_quote(isin):
     try:
-        url = f"https://api.upstox.com/v2/option-chain/option-summaries?symbol=NSE_EQ|{symbol}"
+        url = f"https://api.upstox.com/v2/market-quote/ltp?symbol=NSE_EQ|{isin}"
         r = requests.get(url, headers=HEADERS)
-        data = r.json()["data"]
-
-        ce_oi_list = [entry["open_interest"] for entry in data if entry["option_type"] == "CE"]
-        if not ce_oi_list:
-            return 0
-        avg_oi = sum(ce_oi_list[-5:]) / len(ce_oi_list[-5:])
-        return avg_oi
-    except Exception as e:
-        print(f"❌ OI fetch error for {symbol}: {e}")
-        return 0
-        
-def fetch_equity_quote(symbol):
-    try:
-        url = f"https://api.upstox.com/v2/market-quote/ltp?symbol=NSE_EQ%7C{symbol}"
-        r = requests.get(url, headers=HEADERS)
-        print(f"[{symbol}] RAW LTP RESPONSE:", r.text)
+        print(f"[{isin}] RAW LTP RESPONSE:", r.text)
         data = r.json()
-        stock_data = data["data"][f"NSE_EQ|{symbol}"]
+        if "data" not in data or f"NSE_EQ|{isin}" not in data["data"]:
+            return None
+        stock_data = data["data"][f"NSE_EQ|{isin}"]
+        ltp = stock_data["last_price"]
         return {
-            "ltp": stock_data["last_price"],
-            "vwap": stock_data["last_price"] * 0.985,   # mock vwap
-            "volume": 1000000 + 50000                   # mock volume
+            "ltp": ltp,
+            "vwap": ltp * 0.985,       # mock vwap
+            "volume": 1000000 + 50000  # mock volume
         }
     except Exception as e:
-        print(f"❌ Quote fetch error for {symbol}:", e)
+        print(f"❌ Quote fetch error for {isin}:", e)
         return None
+
+# === Dummy OI Fetch ===
+def fetch_option_oi(symbol):
+    try:
+        # Future: Add real OI logic here
+        return 120000  # mock OI
+    except Exception as e:
+        print(f"❌ OI fetch error for {symbol}:", e)
+        return 0
 
 # === Scanner Logic ===
 def scan_and_alert():
-symbols = {
-    "TATAMOTORS": "INE155A01022",
-    "SBIN": "INE062A01020",
-    "ICICIBANK": "INE090A01021",
-    "RELIANCE": "INE002A01018",
-    "HDFCBANK": "INE040A01034",
-    "INFY": "INE009A01021"
-}
+    symbols = {
+        "TATAMOTORS": "INE155A01022",
+        "SBIN": "INE062A01020",
+        "ICICIBANK": "INE090A01021",
+        "RELIANCE": "INE002A01018",
+        "HDFCBANK": "INE040A01034",
+        "INFY": "INE009A01021"
+    }
 
-    for symbol in symbols:
-        eq = fetch_equity_quote(symbol)
+    for name, isin in symbols.items():
+        eq = fetch_equity_quote(isin)
         if not eq: continue
 
         ltp = eq["ltp"]
         vwap = eq["vwap"]
-        volume = eq["volume"]
-
-        volume_x = volume / 1000000  # Dummy multiplier to simulate surge
-
-        oi = fetch_option_oi(symbol)
+        volume_x = eq["volume"] / 1000000
+        oi = fetch_option_oi(name)
 
         if ltp > vwap and volume_x > 1.5 and oi > 100000:
             message = (
-                f"🚀 <b>{symbol}</b> trending breakout!\n"
-                f"CMP: ₹{ltp} | VWAP: ₹{vwap}\n"
+                f"🚀 <b>{name}</b> trending breakout!\n"
+                f"CMP: ₹{ltp} | VWAP: ₹{vwap:.2f}\n"
                 f"Volume Surge: {volume_x:.1f}x | CE OI: {int(oi)}\n\n"
                 f"📈 Consider 1 OTM CE | Trend looks strong"
             )
