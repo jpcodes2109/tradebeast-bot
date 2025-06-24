@@ -1,10 +1,18 @@
 import requests
 import os
 
-# Load your bot credentials from environment variables (Render will provide these)
+# === ENV VARS ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+UPSTOX_TOKEN = os.getenv("UPSTOX_TOKEN")
 
+# === HEADERS for Upstox API ===
+HEADERS = {
+    "Authorization": f"Bearer {UPSTOX_TOKEN}",
+    "Accept": "application/json"
+}
+
+# === Send Telegram Alert ===
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
@@ -13,35 +21,67 @@ def send_telegram_message(message):
         "parse_mode": "HTML"
     }
     try:
-        response = requests.post(url, data=payload)
-        print(f"[✔] Sent: {message}")
-        return response.json()
+        r = requests.post(url, data=payload)
+        print("✅ Alert sent:", message)
     except Exception as e:
-        print(f"[❌] Error: {e}")
+        print("❌ Telegram error:", e)
+
+# === Get LTP, VWAP, Volume ===
+def fetch_equity_quote(symbol):
+    try:
+        url = f"https://api.upstox.com/v2/market-quote/quote?symbol=NSE_EQ|{symbol}"
+        r = requests.get(url, headers=HEADERS)
+        data = r.json()["data"][f"NSE_EQ|{symbol}"]
+        return {
+            "ltp": data["last_price"],
+            "vwap": data["vwap"],
+            "volume": data["volume"]
+        }
+    except Exception as e:
+        print(f"❌ Quote fetch error for {symbol}: {e}")
         return None
 
-# 📊 Mock data — simulate a trending stock scan
-mock_stock_data = {
-    "TATAMOTORS": {"price": 984, "vwap": 972, "volume_x": 2.1, "oi_change": 12},
-    "SBIN": {"price": 585, "vwap": 584.5, "volume_x": 0.8, "oi_change": 5},
-    "ICICIBANK": {"price": 1020, "vwap": 1011, "volume_x": 1.7, "oi_change": 15}
-}
+# === Get OI for CE Option (Next weekly expiry, ATM) ===
+def fetch_option_oi(symbol):
+    try:
+        url = f"https://api.upstox.com/v2/option-chain/option-summaries?symbol=NSE_EQ|{symbol}"
+        r = requests.get(url, headers=HEADERS)
+        data = r.json()["data"]
 
+        ce_oi_list = [entry["open_interest"] for entry in data if entry["option_type"] == "CE"]
+        if not ce_oi_list:
+            return 0
+        avg_oi = sum(ce_oi_list[-5:]) / len(ce_oi_list[-5:])
+        return avg_oi
+    except Exception as e:
+        print(f"❌ OI fetch error for {symbol}: {e}")
+        return 0
+
+# === Scanner Logic ===
 def scan_and_alert():
-    for stock, data in mock_stock_data.items():
-        if (
-            data["price"] > data["vwap"] and
-            data["volume_x"] > 1.5 and
-            data["oi_change"] > 10
-        ):
+    symbols = ["TATAMOTORS", "SBIN", "ICICIBANK", "RELIANCE", "HDFCBANK", "INFY"]  # You can add full NSE list here
+
+    for symbol in symbols:
+        eq = fetch_equity_quote(symbol)
+        if not eq: continue
+
+        ltp = eq["ltp"]
+        vwap = eq["vwap"]
+        volume = eq["volume"]
+
+        volume_x = volume / 1000000  # Dummy multiplier to simulate surge
+
+        oi = fetch_option_oi(symbol)
+
+        if ltp > vwap and volume_x > 1.5 and oi > 100000:
             message = (
-                f"🚀 <b>{stock}</b> Trending Up!\n"
-                f"CMP: ₹{data['price']} | VWAP: ₹{data['vwap']}\n"
-                f"Volume Surge ✅ ({data['volume_x']}x) | OI: +{data['oi_change']}%\n\n"
-                f"📈 Clean trend forming. Consider 1 OTM CE 🚀"
+                f"🚀 <b>{symbol}</b> trending breakout!\n"
+                f"CMP: ₹{ltp} | VWAP: ₹{vwap}\n"
+                f"Volume Surge: {volume_x:.1f}x | CE OI: {int(oi)}\n\n"
+                f"📈 Consider 1 OTM CE | Trend looks strong"
             )
             send_telegram_message(message)
 
-# 🔁 Run once (Render will restart the container or you can cron it)
+# === Entry Point ===
 if __name__ == "__main__":
     scan_and_alert()
